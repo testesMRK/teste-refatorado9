@@ -1,0 +1,64 @@
+name: CI - Java Build e Test
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+
+env:
+  JAVA_VERSION: "25"
+  IMAGE_NAME: brunomarch/build-java
+
+jobs:
+  build:
+    name: Build e Test
+    runs-on: [self-hosted, Linux, build]
+
+    services:
+      postgres:
+        image: postgres:latest
+        env:
+          POSTGRES_USER: ${{ secrets.DB_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.DB_NAME }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: maven
+
+      - name: Build
+        run: mvn clean install
+
+      - name: Run Tests
+        run: mvn test
+
+  docker-build:
+    name: Docker Build (validação)
+    runs-on: [self-hosted, Linux, build]
+    needs: build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build da imagem (sem push)
+        uses: ./.github/actions/docker-build-push
+        with:
+          image-name: "${{ env.IMAGE_NAME }}"
+          image-tag: "${{ github.sha }}"
+          push: "false"
